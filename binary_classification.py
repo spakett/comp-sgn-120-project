@@ -61,24 +61,22 @@ def load_sample(file_path, target_duration = 5, sr = 16000):
     return audio, sr
 
 def feature_extraction(audio, sr):
-    spectrogram = librosa.feature.melspectrogram(y = audio, sr = sr, n_mels=128) # Mel spectrogram
-    spectrogram_db = librosa.power_to_db(spectrogram, ref=np.max) # Convert to log scale
+    mel_spectrogram = librosa.feature.melspectrogram(y = audio, sr = sr, n_mels=128) # Mel spectrogram
+    mel_spectrogram_db = librosa.power_to_db(mel_spectrogram, ref=np.max) # Convert to log scale
+    
+    # spectrogram = librosa.stft(y = audio)  # Short-Time Fourier Transform
+    # spectrogram_db = librosa.amplitude_to_db(np.abs(spectrogram), ref=np.max)
 
-    mfcc = librosa.feature.mfcc(S=spectrogram_db, sr=sr, n_mfcc = 128)
+    mfcc = librosa.feature.mfcc(S=mel_spectrogram_db, sr=sr, n_mfcc = 128)
 
     chroma = librosa.feature.chroma_stft(y = audio, sr = sr)
-    return spectrogram_db, mfcc, chroma
+    return mel_spectrogram_db, mfcc, chroma
 
-def preprocess_features(mel_spec, mfcc, chroma, target_size=(128, 128)):
+def preprocess_features(mel_spec, mfcc, chroma, target_size):
     # Resize the spectrogram to a consistent size
-    mel_resized = resize(mel_spec, target_size, anti_aliasing=True)
 
-    mfcc_resized = resize(mfcc, target_size, anti_aliasing=True)
-
-    chroma_resized = resize(chroma, target_size, anti_aliasing=True)
-
-    #feature_stack = np.dstack((mel_resized, mfcc_resized, chroma_resized)) # Replace the line below with this line for 3D input and change the input shape of the model as well
-    feature_stack = mel_resized
+    #feature_stack = np.dstack((mel_spec, mfcc_resized, chroma_resized)) # Replace the line below with this line for 3D input and change the input shape of the model as well
+    feature_stack = mel_spec
     return feature_stack
 
 def build_model(input_shape):
@@ -136,7 +134,9 @@ def main():
                 # Load audio and extract features
                 audio, sr = load_sample(file_path)
                 mel_spectrogram_db, mfcc, chroma = feature_extraction(audio, sr)
-                # if file == "car (1).wav" or "tram (1).wav":
+
+                # Plot the mel-scaled spectrogram
+                # if file_path == os.path.join(folder_path, 'dataset', split_name, "car (1).wav") or file_path == os.path.join(folder_path, 'dataset', split_name, "tram (1).wav"):
                 #     plt.figure(figsize=(10, 6))
                 #     librosa.display.specshow(mel_spectrogram_db, sr=sr, hop_length=512, x_axis="time", y_axis="mel", cmap="viridis")
                 #     plt.colorbar(format="%+2.0f dB")
@@ -144,12 +144,14 @@ def main():
                 #     plt.xlabel("Time")
                 #     plt.ylabel("Frequency")
                 #     plt.show()
-                # Preprocess the features for CNN
-                features = preprocess_features(mel_spectrogram_db, mfcc, chroma)
+
+                features = mel_spectrogram_db
+                # features = np.dstack((mel_spectrogram_db, mfcc, chroma))
 
                 # Append features and label to the respective split
                 X_split.append(features)
                 Y_split.append(label)
+                
         # Casting lists to np.darrays
         split_mapping[split_name] = (np.array(X_split), np.array(Y_split))
 
@@ -158,10 +160,10 @@ def main():
     X_test, Y_test = split_mapping["test"]
 
     # Data loaded and features extracted. ML time.
-    input_shape = (128, 128, 1)  # 1D image
     # Debug
     print(X_test.shape, X_train.shape, X_validate.shape)
     print(Y_test.shape, Y_train.shape, Y_validate.shape)
+    input_shape = (X_train.shape[1], X_train.shape[2], 1)  # 1D image
 
     model = build_model(input_shape)
     model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])   
